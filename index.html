@@ -3,18 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DOM Board Check</title>
+<title>DOM Display Flasher</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect x=%276%27 y=%276%27 width=%2720%27 height=%2720%27 rx=%273%27 fill=%27%230b6bcb%27/%3E%3Cpath d=%27M10 2v4M16 2v4M22 2v4M10 26v4M16 26v4M22 26v4M2 10h4M2 16h4M2 22h4M26 10h4M26 16h4M26 22h4%27 stroke=%27%230b6bcb%27 stroke-width=%272%27/%3E%3C/svg%3E">
 <style>
   :root {
     --bg: #f6f7f9; --card: #ffffff; --text: #1b1f24; --muted: #5d6673;
     --line: #e2e5ea; --accent: #0b6bcb; --accent-text: #ffffff;
     --ok: #1a7f37; --warn: #9a6700; --bad: #c62828; --code: #f0f2f5;
+    --ok-bg: #e9f6ec; --bad-bg: #fdecec; --warn-bg: #fff6e0;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #111418; --card: #1a1f25; --text: #e6e9ee; --muted: #9aa4b2;
       --line: #2b323b; --accent: #4c9ef0; --accent-text: #0b1520;
       --ok: #4ac26b; --warn: #d4a72c; --bad: #f47067; --code: #12161b;
+      --ok-bg: #12271a; --bad-bg: #2d1515; --warn-bg: #2a2310;
     }
   }
   * { box-sizing: border-box; }
@@ -22,377 +25,310 @@
     font: 15px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
   main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
   h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 8px; display: flex; gap: 8px; align-items: baseline; }
+  h2 .n { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--accent); color: var(--accent-text); font-size: 13px; flex: none; }
   .sub { color: var(--muted); margin: 0 0 20px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-    padding: 16px; margin-bottom: 16px; }
-  ol { margin: 0; padding-left: 20px; }
-  li { margin: 4px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
   .th { color: var(--muted); font-size: 14px; display: block; }
-  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
-  button { font: inherit; font-weight: 600; border-radius: 8px; padding: 10px 16px;
-    border: 1px solid var(--accent); background: var(--accent); color: var(--accent-text);
-    cursor: pointer; }
-  button.secondary { background: transparent; color: var(--accent); }
-  button:disabled { opacity: .5; cursor: default; }
-  .status { font-weight: 600; margin: 0 0 8px; }
-  .status.ok { color: var(--ok); } .status.warn { color: var(--warn); } .status.bad { color: var(--bad); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  button, .filebtn { font: inherit; font-weight: 600; border-radius: 8px; padding: 10px 18px;
+    border: 1px solid var(--accent); background: var(--accent); color: var(--accent-text); cursor: pointer; }
+  button.secondary, .filebtn { background: transparent; color: var(--accent); }
+  button.big { font-size: 17px; padding: 12px 26px; }
+  button:disabled { opacity: .45; cursor: default; }
+  input[type=file] { display: none; }
+  #drop { border: 2px dashed var(--line); border-radius: 10px; padding: 14px; }
+  #drop.over { border-color: var(--accent); }
+  #fileInfo { margin-top: 10px; }
   table { width: 100%; border-collapse: collapse; }
-  td { padding: 6px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
-  td:first-child { color: var(--muted); width: 42%; padding-right: 12px; }
-  pre { background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 12px;
-    overflow-x: auto; font: 12.5px/1.45 Consolas, ui-monospace, monospace; margin: 0;
-    max-height: 320px; white-space: pre-wrap; word-break: break-word; }
-  .hidden { display: none; }
-  .note { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  td { padding: 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td:first-child { color: var(--muted); width: 40%; padding-right: 12px; }
+  .bar { height: 14px; background: var(--code); border: 1px solid var(--line); border-radius: 7px; overflow: hidden; margin: 10px 0 6px; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .stage { color: var(--muted); font-size: 14px; display: flex; justify-content: space-between; gap: 10px; }
+  .result { border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; border: 1px solid var(--line); }
+  .result.ok { background: var(--ok-bg); border-color: var(--ok); }
+  .result.bad { background: var(--bad-bg); border-color: var(--bad); }
+  .result.warn { background: var(--warn-bg); border-color: var(--warn); }
+  .result b.title { display: block; font-size: 17px; margin-bottom: 4px; }
+  .result.ok b.title { color: var(--ok); } .result.bad b.title { color: var(--bad); } .result.warn b.title { color: var(--warn); }
+  .result p { margin: 4px 0; }
+  details summary { cursor: pointer; font-weight: 600; }
+  pre { background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow-x: auto;
+    font: 12.5px/1.45 Consolas, ui-monospace, monospace; margin: 10px 0 0; max-height: 320px; white-space: pre-wrap; word-break: break-word; }
+  .note { color: var(--muted); font-size: 13px; margin: 10px 0 0; }
+  .warnline { color: var(--warn); font-weight: 600; margin: 10px 0 0; }
+  a { color: var(--accent); }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <main>
-  <h1>DOM Board Check</h1>
-  <p class="sub">Step 1 of the web flasher: checks that this laptop can talk to the board over USB. It only reads information. Nothing on the board is changed.</p>
+  <h1>DOM Display Flasher</h1>
+  <p class="sub">Updates the firmware on the STM32F746G display board from Microsoft Edge or Google Chrome. Nothing to install.
+    <span class="th">อัปเดตเฟิร์มแวร์บอร์ดจอผ่าน Microsoft Edge หรือ Google Chrome โดยไม่ต้องติดตั้งโปรแกรม</span></p>
 
-  <div class="card" id="unsupported" hidden>
-    <p class="status bad">This browser can't access USB devices.</p>
-    <p>Open this page in <b>Microsoft Edge</b> or <b>Google Chrome</b> on a Windows, Mac or Linux computer (not a phone).<span class="th">กรุณาเปิดหน้านี้ด้วย Microsoft Edge หรือ Google Chrome บนคอมพิวเตอร์</span></p>
+  <div class="result bad" id="unsupported" hidden>
+    <b class="title">This browser can't access USB devices.</b>
+    <p>Open this page in <b>Microsoft Edge</b> or <b>Google Chrome</b> on a computer (not a phone).
+      <span class="th">กรุณาเปิดหน้านี้ด้วย Microsoft Edge หรือ Google Chrome บนคอมพิวเตอร์</span></p>
   </div>
 
   <div class="card">
-    <ol>
-      <li>Plug the display board's USB cable into this laptop.<span class="th">เสียบสาย USB ของบอร์ดจอเข้ากับคอมพิวเตอร์</span></li>
-      <li>Click <b>Check USB device</b> and pick the board in the list.<span class="th">กด Check USB device แล้วเลือกบอร์ดจากรายการ</span></li>
-      <li>If the board isn't in the list, also try <b>Check serial port</b>.<span class="th">ถ้าไม่เจอบอร์ดในรายการ ให้ลองกด Check serial port</span></li>
-      <li>Click <b>Copy report</b> and send it to the DOM team.<span class="th">กด Copy report แล้วส่งให้ทีม DOM</span></li>
+    <h2><span class="n">1</span>Choose the firmware file</h2>
+    <div id="drop">
+      <div class="row">
+        <label class="filebtn" for="file">Choose .hex file</label>
+        <input type="file" id="file" accept=".hex,.ihex">
+        <span class="th" style="display:inline">or drop it here · เลือกไฟล์ .hex หรือลากไฟล์มาวางที่นี่</span>
+      </div>
+      <div id="fileInfo" hidden><table><tbody id="fileFacts"></tbody></table></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">2</span>Connect the board and flash</h2>
+    <ol style="margin:0 0 12px;padding-left:20px">
+      <li>Plug the USB cable into the board's <b>USB ST-LINK</b> port (CN14) and into this laptop.
+        <span class="th">เสียบสาย USB เข้าช่อง USB ST-LINK (CN14) ของบอร์ด และเข้ากับคอมพิวเตอร์</span></li>
+      <li>Click <b>Flash board</b>, choose <b>STM32 STLink</b> in the list, then click <b>Connect</b>.
+        <span class="th">กด Flash board เลือก STM32 STLink จากรายการ แล้วกด Connect (เชื่อมต่อ)</span></li>
+      <li>Wait until it says <b>Done</b>. Do not unplug the board while it is flashing (about 2 minutes).
+        <span class="th">รอจนขึ้นว่าเสร็จ ห้ามถอดสายระหว่างแฟลช (ประมาณ 2 นาที)</span></li>
     </ol>
-    <div class="row" style="margin-top:14px">
-      <button id="btnUsb">Check USB device</button>
-      <button id="btnSerial" class="secondary">Check serial port</button>
+    <div class="row">
+      <button id="btnFlash" class="big" disabled>Flash board</button>
+      <span class="th" id="flashHint" style="display:inline">Choose the firmware file first · เลือกไฟล์ก่อน</span>
+    </div>
+    <div id="progress" hidden>
+      <div class="bar"><div id="barFill"></div></div>
+      <div class="stage"><span id="stage"></span><span id="pct"></span></div>
     </div>
   </div>
 
-  <div class="card hidden" id="resultCard">
-    <p class="status" id="status"></p>
-    <p id="advice" style="margin:0 0 10px"></p>
-    <table><tbody id="facts"></tbody></table>
-  </div>
+  <div class="result" id="result" hidden></div>
 
   <div class="card">
-    <div class="row" style="justify-content:space-between;align-items:center;margin:0 0 8px">
-      <b>Report</b>
-      <button id="btnCopy" class="secondary">Copy report</button>
-    </div>
-    <pre id="log"></pre>
-    <p class="note">If nothing appears in the device list, the board's USB driver is probably missing on this laptop. Copy the report anyway; it tells us what to fix.</p>
+    <details id="details">
+      <summary>Details and report</summary>
+      <div class="row" style="margin-top:10px">
+        <button id="btnCopy" class="secondary">Copy report</button>
+        <a href="check.html">Board check (diagnostics)</a>
+      </div>
+      <pre id="log"></pre>
+    </details>
+    <p class="note">If something goes wrong, open <b>Details and report</b>, click <b>Copy report</b> and send it to the DOM team.
+      <span class="th">ถ้ามีปัญหา กด Details and report แล้วกด Copy report ส่งให้ทีม DOM</span></p>
   </div>
 </main>
 
-<script>
-"use strict";
+<script type="module">
+import { parseHex, makePlan } from "./js/hex.js";
+import { StLink, USB_FILTERS, STLINK_MODELS } from "./js/stlink.js";
+import { Flasher, FlashError } from "./js/flasher.js";
+
+const VERSION = "1.0.0";
 const $ = (id) => document.getElementById(id);
-const logEl = $("log");
 const hex = (n, w = 4) => "0x" + (n >>> 0).toString(16).toUpperCase().padStart(w, "0");
+const kb = (n) => n >= 1048576 ? (n / 1048576).toFixed(2) + " MB" : Math.round(n / 1024) + " KB";
 
 function log(msg) {
   const t = new Date().toISOString().slice(11, 19);
-  logEl.textContent += `[${t}] ${msg}\n`;
-  logEl.scrollTop = logEl.scrollHeight;
+  $("log").textContent += `[${t}] ${msg}\n`;
+  $("log").scrollTop = $("log").scrollHeight;
 }
-function header() {
-  logEl.textContent = "";
-  log("DOM Board Check v0.1");
-  log("Browser: " + navigator.userAgent);
-  log("Page: " + location.href);
-}
-function showResult(kind, text, advice) {
-  $("resultCard").classList.remove("hidden");
-  const s = $("status");
-  s.className = "status " + kind;
-  s.textContent = text;
-  $("advice").textContent = advice || "";
-  $("facts").innerHTML = "";
+function result(kind, title, ...paras) {
+  const r = $("result");
+  r.className = "result " + kind;
+  r.hidden = false;
+  r.replaceChildren();
+  const b = document.createElement("b"); b.className = "title"; b.textContent = title; r.append(b);
+  for (const p of paras) {
+    const el = document.createElement("p");
+    if (Array.isArray(p)) { el.textContent = p[0]; const th = document.createElement("span"); th.className = "th"; th.textContent = p[1]; el.append(th); }
+    else el.textContent = p;
+    r.append(el);
+  }
+  r.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 function fact(name, value) {
   const tr = document.createElement("tr");
   const a = document.createElement("td"); a.textContent = name;
   const b = document.createElement("td"); b.textContent = value;
-  tr.append(a, b); $("facts").append(tr);
-  log(`  ${name}: ${value}`);
+  tr.append(a, b); $("fileFacts").append(tr);
 }
 
-// ---------- Known USB devices ----------
-const ST_VID = 0x0483;
-const STLINK = {
-  0x3744: { name: "ST-LINK/V1", gen: 1 },
-  0x3748: { name: "ST-LINK/V2", gen: 2 },
-  0x374B: { name: "ST-LINK/V2-1", gen: 2 },
-  0x3752: { name: "ST-LINK/V2-1 (no drive)", gen: 2 },
-  0x374E: { name: "STLINK-V3", gen: 3 },
-  0x374F: { name: "STLINK-V3", gen: 3 },
-  0x3753: { name: "STLINK-V3", gen: 3 },
-  0x3754: { name: "STLINK-V3 (no drive)", gen: 3 },
-  0x3757: { name: "STLINK-V3PWR", gen: 3 },
-};
-const DEV_IDS = {
-  0x449: "STM32F74x/F75x (F746, F750)",
-  0x451: "STM32F76x/F77x",
-  0x452: "STM32F72x/F73x",
-  0x413: "STM32F405/407/415/417",
-  0x419: "STM32F42x/F43x",
-  0x435: "STM32L43x/L44x",
-  0x462: "STM32L45x/L46x",
-  0x464: "STM32L41x/L42x",
-  0x415: "STM32L47x/L48x",
-  0x461: "STM32L49x/L4Ax",
-  0x468: "STM32G431/G441",
-  0x469: "STM32G47x/G48x",
-};
-// Where each family stores its flash size (KB, 16-bit). Read aligned 32-bit word.
-const FLASH_SIZE_REG = {
-  0x449: [0x1FF0F440, 2], 0x451: [0x1FF0F440, 2], 0x452: [0x1FF07A20, 2],
-  0x413: [0x1FFF7A20, 2], 0x419: [0x1FFF7A20, 2],
-  0x435: [0x1FFF75E0, 0], 0x462: [0x1FFF75E0, 0], 0x464: [0x1FFF75E0, 0],
-  0x415: [0x1FFF75E0, 0], 0x461: [0x1FFF75E0, 0],
-  0x468: [0x1FFF75E0, 0], 0x469: [0x1FFF75E0, 0],
-};
+log(`DOM Display Flasher v${VERSION}`);
+log("Browser: " + navigator.userAgent);
 
-function withTimeout(p, ms, what) {
-  return Promise.race([p, new Promise((_, rej) =>
-    setTimeout(() => rej(new Error(`Timed out waiting for ${what}`)), ms))]);
+// ---------- file ----------
+let plan = null, fileName = "";
+
+async function loadFile(file) {
+  plan = null;
+  $("btnFlash").disabled = true;
+  $("fileFacts").replaceChildren();
+  $("fileInfo").hidden = false;
+  $("result").hidden = true;
+  fileName = file.name;
+  fact("File", `${file.name} (${kb(file.size)})`);
+  try {
+    if (!/\.(hex|ihex)$/i.test(file.name)) throw new Error("This is not a .hex file.");
+    const blocks = parseHex(await file.text());
+    plan = makePlan(blocks);
+    fact("Internal flash", `${kb(plan.internalBytes)} in sectors ${plan.sectors.map(s => s.n).join(", ") || "none"}`);
+    fact("QSPI flash (screen graphics)", plan.qspiBytes ? `${kb(plan.qspiBytes)} in ${plan.qsectors.length} blocks` : "none");
+    if (!plan.internalBytes) throw new Error("The file has no program for the STM32's internal flash. Is this the right file?");
+    log(`File ${file.name}: internal ${plan.internalBytes} B (sectors ${plan.sectors.map(s => s.n)}), QSPI ${plan.qspiBytes} B (${plan.qsectors.length} x 64 KB)`);
+    $("btnFlash").disabled = !("usb" in navigator);
+    $("flashHint").textContent = "Ready · พร้อมแฟลช";
+  } catch (e) {
+    plan = null;
+    fact("Problem", e.message);
+    log("File error: " + e.message);
+    $("flashHint").textContent = "Choose a valid .hex file · เลือกไฟล์ .hex ที่ถูกต้อง";
+  }
+}
+$("file").onchange = (e) => e.target.files[0] && loadFile(e.target.files[0]);
+const drop = $("drop");
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); };
+
+// ---------- flashing ----------
+let busy = false;
+window.addEventListener("beforeunload", (e) => { if (busy) { e.preventDefault(); e.returnValue = ""; } });
+
+function progress(frac, label) {
+  $("barFill").style.width = (frac * 100).toFixed(1) + "%";
+  $("pct").textContent = Math.floor(frac * 100) + "%";
+  if (label) $("stage").textContent = label;
 }
 
-// ---------- ST-LINK (V2 / V2-1 / V3) minimal read-only protocol ----------
-class StLink {
-  constructor(dev, iface, epOut, epIn, gen) {
-    Object.assign(this, { dev, iface, epOut, epIn, gen });
+function driverAdvice(e) {
+  const m = String(e && e.message || e);
+  if (/access denied|security|unable to claim|claimInterface/i.test(m) || e?.name === "SecurityError" || e?.name === "NetworkError") {
+    return ["bad", "The board was found, but Windows won't let the browser use it.",
+      ["This laptop is missing ST's ST-LINK USB driver, which the board's built-in ST-LINK needs on Windows. Ask IT to install \"STSW-LINK009\" (ST-LINK USB driver) once, or use a laptop that already has STM32CubeProgrammer or STM32CubeIDE installed.",
+       "คอมพิวเตอร์เครื่องนี้ยังไม่มีไดรเวอร์ ST-LINK ให้ IT ติดตั้ง STSW-LINK009 หนึ่งครั้ง หรือใช้เครื่องที่ติดตั้ง STM32CubeProgrammer แล้ว"],
+      "Also close STM32CubeProgrammer, STM32CubeIDE or other tabs of this page if they are open."];
   }
-  async xfer(cmd, rxLen) {
-    const buf = new Uint8Array(16); buf.set(cmd);
-    const r = await withTimeout(this.dev.transferOut(this.epOut, buf), 2000, "ST-LINK (send)");
-    if (r.status !== "ok") throw new Error("USB send failed: " + r.status);
-    if (!rxLen) return null;
-    const res = await withTimeout(this.dev.transferIn(this.epIn, rxLen < 64 ? 64 : rxLen), 2000, "ST-LINK (reply)");
-    if (res.status !== "ok") throw new Error("USB receive failed: " + res.status);
-    return new DataView(res.data.buffer, res.data.byteOffset, res.data.byteLength);
-  }
-  async version() {
-    if (this.gen === 3) {
-      const d = await this.xfer([0xFB], 12);
-      return { stlink: d.getUint8(0), jtag: d.getUint8(2), swim: d.getUint8(1), msd: d.getUint8(3) };
-    }
-    const d = await this.xfer([0xF1], 6);
-    const v = (d.getUint8(0) << 8) | d.getUint8(1);
-    return { stlink: (v >> 12) & 0xF, jtag: (v >> 6) & 0x3F, swim: v & 0x3F };
-  }
-  async mode() { return (await this.xfer([0xF5], 2)).getUint8(0); }
-  async leaveCurrentMode() {
-    const m = await this.mode();
-    if (m === 0) await this.xfer([0xF3, 0x07], 0);        // leave DFU
-    else if (m === 2) await this.xfer([0xF2, 0x21], 0);   // leave debug
-    return m;
-  }
-  async voltage() {
-    const d = await this.xfer([0xF7], 8);
-    const a0 = d.getUint32(0, true), a1 = d.getUint32(4, true);
-    return a0 ? (2 * a1 * 1.2) / a0 : 0;
-  }
-  async enterSwd() {
-    const d = await this.xfer([0xF2, 0x30, 0xA3], 2);
-    return d.getUint8(0);
-  }
-  async dpIdcode() {
-    const d = await this.xfer([0xF2, 0x31], 12);
-    return d.getUint32(4, true);
-  }
-  async read32(addr) {
-    const cmd = [0xF2, 0x07, addr & 0xFF, (addr >> 8) & 0xFF, (addr >> 16) & 0xFF, (addr >>> 24) & 0xFF, 4, 0];
-    const d = await this.xfer(cmd, 4);
-    return d.getUint32(0, true);
-  }
-  async exitDebug() { await this.xfer([0xF2, 0x21], 0); }
-}
-
-function findVendorBulkInterface(dev) {
-  const cfg = dev.configuration;
-  if (!cfg) return null;
-  for (const intf of cfg.interfaces) {
-    const alt = intf.alternate || intf.alternates[0];
-    const bulkOut = alt.endpoints.filter(e => e.type === "bulk" && e.direction === "out");
-    const bulkIn = alt.endpoints.filter(e => e.type === "bulk" && e.direction === "in")
-                                .sort((a, b) => a.endpointNumber - b.endpointNumber);
-    if (alt.interfaceClass === 0xFF && bulkOut.length && bulkIn.length) {
-      return { num: intf.interfaceNumber, epOut: bulkOut[0].endpointNumber, epIn: bulkIn[0].endpointNumber };
-    }
+  if (/in use|busy/i.test(m)) {
+    return ["bad", "Another program is using the board.",
+      ["Close STM32CubeProgrammer, STM32CubeIDE, or other tabs of this page, unplug and replug the board, then try again.",
+       "ปิดโปรแกรมอื่นที่ใช้บอร์ดอยู่ ถอดแล้วเสียบสายใหม่ แล้วลองอีกครั้ง"]];
   }
   return null;
 }
 
-function describeInterfaces(dev) {
-  if (!dev.configuration) return "(not configured)";
-  const names = { 0x02: "CDC control", 0x0A: "CDC data", 0x08: "Mass storage", 0x03: "HID", 0xFE: "DFU/app-specific", 0xFF: "Vendor" };
-  return dev.configuration.interfaces.map(i => {
-    const a = i.alternate || i.alternates[0];
-    return `#${i.interfaceNumber} ${names[a.interfaceClass] || hex(a.interfaceClass, 2)}${i.claimed ? " (claimed)" : ""}`;
-  }).join(", ");
+async function connectTarget(st, flasher) {
+  await st.leaveCurrentMode();
+  const v = await st.voltage();
+  log(`Board voltage: ${v ? v.toFixed(2) + " V" : "not measured"}`);
+  if (v && v < 2.7) throw new FlashError(`Board voltage is ${v.toFixed(2)} V. It must be at least 2.7 V to program safely. Check the power supply.`);
+  if (await st.setFastSwd()) log("SWD clock 4 MHz");
+  try {
+    await st.enterSwd();
+    log(`Debug port ID ${hex(await st.idcode(), 8)}`);
+    return await flasher.inspect();
+  } catch (e) {
+    log(`Normal connect failed (${e.message}); trying connect-under-reset`);
+    await st.driveNrst(0);
+    await new Promise(r => setTimeout(r, 50));
+    await st.enterSwd();
+    log(`Debug port ID ${hex(await st.idcode(), 8)}`);
+    await st.writeDebug32(0xE000EDFC, (1 << 24) | 1);
+    await st.writeDebug32(0xE000EDF0, 0xA05F0003);
+    await st.driveNrst(1);
+    await new Promise(r => setTimeout(r, 100));
+    return await flasher.inspect();
+  }
 }
 
-function explainOpenError(e) {
-  const m = String(e && e.message || e);
-  if (/access denied|security|claim|unable to claim/i.test(m) || (e && e.name === "SecurityError")) {
-    return "Windows found the board but no usable USB driver is attached to its programming interface, so the browser isn't allowed to use it. "
-      + "This laptop would need ST's ST-LINK USB driver (STSW-LINK009), or the board would need a probe/firmware that doesn't require a driver.";
-  }
-  if (/in use|busy/i.test(m)) {
-    return "Another program is using the board (for example STM32CubeProgrammer or another browser tab). Close it and try again.";
-  }
-  return "The browser couldn't open the device. Copy the report and send it to the DOM team.";
-}
-
-async function checkUsb() {
-  header();
+async function flash() {
+  if (!plan) return;
+  $("result").hidden = true;
   let dev;
   try {
-    dev = await navigator.usb.requestDevice({ filters: [] });
+    dev = await navigator.usb.requestDevice({ filters: USB_FILTERS });
   } catch (e) {
-    if (e && e.name === "NotFoundError") {
-      log("No device was selected (list empty or dialog closed).");
-      showResult("warn", "No device selected.",
-        "If the board didn't appear in the list at all, Windows has no driver the browser can use for it. Try 'Check serial port' too, then copy the report.");
+    if (e?.name === "NotFoundError") {
+      log("No device selected.");
+      result("warn", "No board was selected.",
+        ["If the list was empty, check the cable is in the USB ST-LINK port (CN14) and the board's power LED is on. If it is still empty, run the Board check page and send the report.",
+         "ถ้ารายการว่าง ตรวจสอบว่าเสียบสายที่ช่อง USB ST-LINK (CN14) และไฟเลี้ยงบอร์ดติด ถ้ายังไม่เจอ ให้เปิดหน้า Board check แล้วส่งรายงาน"]);
     } else {
-      log("requestDevice error: " + e);
-      showResult("bad", "Couldn't open the device picker.", String(e));
+      log("requestDevice: " + e);
+      result("bad", "Couldn't open the device list.", String(e.message || e));
     }
     return;
   }
 
-  const known = dev.vendorId === ST_VID ? STLINK[dev.productId] : null;
-  const isRomDfu = dev.vendorId === ST_VID && dev.productId === 0xDF11;
-  showResult("warn", "Device found. Checking access…");
-  fact("Device", `${dev.manufacturerName || "?"} — ${dev.productName || "?"}`);
-  fact("USB ID (VID:PID)", `${hex(dev.vendorId)}:${hex(dev.productId)}`);
-  fact("Identified as", known ? known.name : isRomDfu ? "STM32 built-in USB bootloader (DFU)" : "Unknown / custom device");
-  if (dev.serialNumber) fact("Serial", dev.serialNumber);
-
+  busy = true;
+  $("btnFlash").disabled = true;
+  $("file").disabled = true;
+  $("progress").hidden = false;
+  progress(0, "Connecting…");
+  let wake = null;
+  try { wake = await navigator.wakeLock?.request("screen"); } catch {}
+  const model = STLINK_MODELS[dev.productId];
+  log(`Device: ${dev.manufacturerName || "?"} ${dev.productName || "?"} ${hex(dev.vendorId)}:${hex(dev.productId)} (${model ? model.name : "unknown"}) serial ${dev.serialNumber || "?"}`);
+  const st = new StLink(dev);
+  const flasher = new Flasher(st, { log });
+  const t0 = Date.now();
+  let stage = "connect";
   try {
-    await dev.open();
-    if (!dev.configuration) await dev.selectConfiguration(1);
-    fact("Interfaces", describeInterfaces(dev));
+    const v = await st.open();
+    log(`ST-LINK firmware V${v.stlink}J${v.jtag}${v.msd !== undefined ? "M" + v.msd : "S" + v.swim}`);
+    const info = await connectTarget(st, flasher);
+    log(`MCU: STM32F74x/F75x dev ${hex(info.devId, 3)} rev ${hex(info.rev)}, flash ${info.flashKB} KB, RDP ${hex(info.rdp, 2)}, nWRP ${hex(info.nwrp, 2)}`);
+    stage = "flash";
+    progress(0, "Loading flashing helper…");
+    await flasher.loadLoader();
+    await flasher.program(plan, info, progress);
+    await flasher.resetRun();
+    const secs = Math.round((Date.now() - t0) / 1000);
+    log(`Done in ${secs} s. Board restarted.`);
+    progress(1, `Done in ${secs} s`);
+    result("ok", "Done. The board has been updated and restarted.",
+      [`${fileName} was written and verified in ${secs} seconds. You can unplug the board.`,
+       "แฟลชและตรวจสอบเรียบร้อย บอร์ดรีสตาร์ทแล้ว ถอดสายได้"]);
   } catch (e) {
-    log("open() failed: " + e);
-    showResult("bad", "Board found, but this laptop can't open it from the browser.", explainOpenError(e));
-    fact("USB ID (VID:PID)", `${hex(dev.vendorId)}:${hex(dev.productId)}`);
-    fact("Identified as", known ? known.name : "Unknown / custom device");
-    fact("Error", String(e.message || e));
-    return;
-  }
-
-  if (!known) {
-    showResult(isRomDfu ? "ok" : "warn",
-      isRomDfu ? "The browser can open the STM32 USB bootloader." : "The browser can open this device, but it isn't an ST-LINK.",
-      isRomDfu ? "Flashing through the chip's own USB bootloader may be possible. Copy the report and send it to the DOM team."
-               : "Copy the report and send it to the DOM team so we can see what the board's USB port is.");
-    try { await dev.close(); } catch {}
-    return;
-  }
-
-  const ifc = findVendorBulkInterface(dev);
-  if (!ifc) {
-    showResult("bad", "ST-LINK found, but its programming interface wasn't visible.", "Copy the report and send it to the DOM team.");
-    try { await dev.close(); } catch {}
-    return;
-  }
-  try {
-    await dev.claimInterface(ifc.num);
-  } catch (e) {
-    log("claimInterface failed: " + e);
-    showResult("bad", "ST-LINK found, but the browser isn't allowed to use it.", explainOpenError(e));
-    fact("USB ID (VID:PID)", `${hex(dev.vendorId)}:${hex(dev.productId)}`);
-    fact("Identified as", known.name);
-    fact("Error", String(e.message || e));
-    try { await dev.close(); } catch {}
-    return;
-  }
-
-  const st = new StLink(dev, ifc.num, ifc.epOut, ifc.epIn, known.gen);
-  try {
-    const v = await st.version();
-    fact("ST-LINK firmware", `V${v.stlink} J${v.jtag}` + (v.msd !== undefined ? ` M${v.msd}` : ` S${v.swim}`));
-    const prevMode = await st.leaveCurrentMode();
-    log(`  (probe mode was ${prevMode})`);
-    const volts = await st.voltage();
-    fact("Board voltage", volts ? volts.toFixed(2) + " V" : "not measured");
-
-    const sw = await st.enterSwd();
-    if (sw !== 0x80) throw new Error(`SWD connect status ${hex(sw, 2)} (is the board powered and wired?)`);
-    const dp = await st.dpIdcode();
-    fact("Debug port ID", hex(dp, 8));
-    const dbg = await st.read32(0xE0042000);
-    const devId = dbg & 0xFFF, rev = (dbg >>> 16) & 0xFFFF;
-    fact("MCU", `${DEV_IDS[devId] || "unknown"} (dev ${hex(devId, 3)}, rev ${hex(rev, 4)})`);
-    const fr = FLASH_SIZE_REG[devId];
-    if (fr) {
-      const w = await st.read32(fr[0]);
-      const kb = fr[1] ? (w >>> 16) & 0xFFFF : w & 0xFFFF;
-      fact("Internal flash", kb + " KB");
-      if (devId === 0x449 && kb < 1024) {
-        log("  Note: this F7 has less than 1 MB of internal flash (e.g. F750 = 64 KB). The 6.0.0 display firmware needs about 490 KB.");
-      }
+    log("ERROR: " + (e.stack || e.message || e));
+    const adv = stage === "connect" ? driverAdvice(e) : null;
+    if (adv) result(...adv);
+    else if (stage === "connect") {
+      result("bad", "Couldn't connect to the display board.", e.message,
+        ["Check the board is powered and the cable is in the USB ST-LINK port, unplug and replug it, then try again.",
+         "ตรวจสอบไฟเลี้ยงบอร์ดและสาย USB ถอดแล้วเสียบใหม่ แล้วลองอีกครั้ง"]);
+    } else {
+      result("bad", "Flashing failed. The board may not start until it is flashed successfully.", e.message,
+        ["Keep the board plugged in and click Flash board again. If it fails twice, copy the report and send it to the DOM team.",
+         "อย่าถอดสาย กด Flash board อีกครั้ง ถ้ายังไม่ได้ให้กด Copy report ส่งให้ทีม DOM"]);
     }
-    await st.exitDebug();
-    showResult("ok", "Success: this laptop can talk to the board from the browser.",
-      "Web flashing is possible on this laptop. Copy the report and send it to the DOM team.");
-    // re-add facts lost by showResult reset
-    fact("Identified as", known.name);
-    fact("USB ID (VID:PID)", `${hex(dev.vendorId)}:${hex(dev.productId)}`);
-    fact("Board voltage", volts ? volts.toFixed(2) + " V" : "not measured");
-    fact("MCU", `${DEV_IDS[devId] || "unknown"} (dev ${hex(devId, 3)})`);
-  } catch (e) {
-    log("ST-LINK error: " + (e.message || e));
-    showResult("warn", "The browser can use the ST-LINK, but couldn't reach the chip.",
-      "USB access works (the important part). Check the board is powered and the cable is good, then try again. " + (e.message || e));
-    try { await st.exitDebug(); } catch {}
+    progress(parseFloat($("barFill").style.width) / 100 || 0, "Stopped");
   } finally {
-    try { await dev.releaseInterface(ifc.num); } catch {}
-    try { await dev.close(); } catch {}
+    try { await st.exitDebug(); } catch {}
+    await st.close();
+    try { await wake?.release(); } catch {}
+    busy = false;
+    $("btnFlash").disabled = !plan;
+    $("file").disabled = false;
   }
 }
-
-async function checkSerial() {
-  header();
-  if (!("serial" in navigator)) {
-    showResult("bad", "This browser doesn't support serial ports.", "Use Microsoft Edge or Google Chrome.");
-    return;
-  }
-  try {
-    const port = await navigator.serial.requestPort();
-    const info = port.getInfo();
-    showResult("ok", "A serial port is available to the browser.",
-      "This works without drivers on Windows 10/11. Copy the report and send it to the DOM team.");
-    fact("USB ID (VID:PID)", info.usbVendorId !== undefined ? `${hex(info.usbVendorId)}:${hex(info.usbProductId)}` : "not a USB port");
-    if (info.usbVendorId === ST_VID && STLINK[info.usbProductId]) fact("Belongs to", STLINK[info.usbProductId].name + " (virtual COM port)");
-  } catch (e) {
-    if (e && e.name === "NotFoundError") {
-      log("No serial port selected.");
-      showResult("warn", "No serial port selected.", "If the list was empty, the board doesn't present a serial port to this laptop.");
-    } else {
-      log("Serial error: " + e);
-      showResult("bad", "Serial check failed.", String(e));
-    }
-  }
-}
-
-$("btnCopy").onclick = async () => {
-  try { await navigator.clipboard.writeText(logEl.textContent || "(empty report)"); $("btnCopy").textContent = "Copied"; }
-  catch { const r = document.createRange(); r.selectNodeContents(logEl); getSelection().removeAllRanges(); getSelection().addRange(r); }
-  setTimeout(() => ($("btnCopy").textContent = "Copy report"), 1500);
-};
 
 if (!("usb" in navigator)) {
   $("unsupported").hidden = false;
-  $("btnUsb").disabled = true;
+  log("WebUSB not available in this browser.");
 }
-$("btnUsb").onclick = () => checkUsb().catch(e => { log("Unexpected error: " + e); showResult("bad", "Unexpected error.", String(e)); });
-$("btnSerial").onclick = () => checkSerial().catch(e => log("Unexpected error: " + e));
-header();
-log("Ready. Plug in the board, then click 'Check USB device'.");
+$("btnFlash").onclick = () => flash().catch(e => { log("Unexpected: " + e); busy = false; });
+$("btnCopy").onclick = async () => {
+  try { await navigator.clipboard.writeText($("log").textContent); $("btnCopy").textContent = "Copied"; }
+  catch { const r = document.createRange(); r.selectNodeContents($("log")); getSelection().removeAllRanges(); getSelection().addRange(r); }
+  setTimeout(() => ($("btnCopy").textContent = "Copy report"), 1500);
+};
+navigator.usb?.addEventListener("disconnect", (e) => { if (busy) log(`USB device ${hex(e.device.productId)} disconnected!`); });
 </script>
 </body>
 </html>

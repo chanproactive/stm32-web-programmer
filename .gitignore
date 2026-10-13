@@ -1,0 +1,5 @@
+# Firmware is distributed to technicians separately, never committed.
+*.hex
+*.bin
+*.elf
+__pycache__/
