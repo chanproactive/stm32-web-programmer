@@ -9,8 +9,8 @@ import base64, pathlib, struct, subprocess, sys, tempfile
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SRC = ROOT / "loader" / "loader.c"
 OUT = ROOT / "js" / "loader-blob.js"
-CFLAGS = ["--target=thumbv7em-none-eabi", "-mcpu=cortex-m7", "-mthumb", "-mfloat-abi=soft",
-          "-Os", "-ffreestanding", "-fno-builtin", "-fno-jump-tables", "-fno-pic",
+CFLAGS = ["--target=thumbv7em-none-eabi", "-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=soft",
+          "-Os", "-ffreestanding", "-fno-builtin", "-fno-jump-tables", "-fno-pic", "-fropi",
           "-fno-asynchronous-unwind-tables", "-fno-unwind-tables", "-Wall", "-Werror"]
 
 

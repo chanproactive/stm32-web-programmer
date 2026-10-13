@@ -1,14 +1,6 @@
-// Intel HEX parsing and firmware layout for the STM32F746G-DISCO display board.
+// Intel HEX parsing and turning a file into an erase/write plan.
 
-export const INTERNAL = { base: 0x08000000, size: 0x100000 };
-export const QSPI = { base: 0x90000000, size: 0x1000000, sector: 0x10000 };
-
-// RM0385: 4 x 32 KB, 1 x 128 KB, 3 x 256 KB
-export const F7_SECTORS = [
-  ...[0, 1, 2, 3].map(i => ({ n: i, base: 0x08000000 + i * 0x8000, size: 0x8000 })),
-  { n: 4, base: 0x08020000, size: 0x20000 },
-  ...[0, 1, 2].map(i => ({ n: 5 + i, base: 0x08040000 + i * 0x40000, size: 0x40000 })),
-];
+import { FLASH_BASE, QSPI, F7_SECTORS, FAMILIES } from "./devices.js";
 
 // Returns a sorted list of contiguous { addr, data } blocks.
 export function parseHex(text) {
@@ -61,38 +53,68 @@ export function parseHex(text) {
   return out;
 }
 
-const inside = (b, r) => b.addr >= r.base && b.addr + b.data.length <= r.base + r.size;
+const inside = (b, base, size) => b.addr >= base && b.addr + b.data.length <= base + size;
+const hexAddr = (a) => "0x" + a.toString(16).toUpperCase();
 
-// Turns HEX blocks into what to erase and write. Each erase unit gets a full
-// buffer (0xFF where the file has no data) so it can be CRC-checked whole.
-export function makePlan(blocks) {
+// Fill erase units with the file's data. Each unit gets a full buffer
+// (0xFF where the file has no data) so it can be CRC-checked whole.
+function fillUnits(list, unitFor) {
+  const map = new Map();
+  for (const b of list) {
+    for (let a = b.addr; a < b.addr + b.data.length;) {
+      const u = unitFor(a);
+      let e = map.get(u.base);
+      if (!e) { e = { ...u, data: new Uint8Array(u.size).fill(0xFF) }; map.set(u.base, e); }
+      const n = Math.min(b.addr + b.data.length, u.base + u.size) - a;
+      e.data.set(b.data.subarray(a - b.addr, a - b.addr + n), a - u.base);
+      a += n;
+    }
+  }
+  return [...map.values()].sort((x, y) => x.base - y.base);
+}
+
+// family: "F7" (display board) or "L4" (power / sensor boards).
+// Returns { family, units, qunits, internalBytes, qspiBytes }:
+//   units  - internal flash erase units: F7 sectors { n, base, size, data },
+//            L4 runs of up to bufSize/2 KB pages { n: first page, count, base, size, data }
+//   qunits - QSPI 64 KB sectors { offset, base, size, data } (F7 only)
+export function makePlan(blocks, family) {
+  const fam = FAMILIES[family];
   const internal = [], qspi = [];
   for (const b of blocks) {
-    if (inside(b, INTERNAL)) internal.push(b);
-    else if (inside(b, QSPI)) qspi.push(b);
-    else throw new Error(`File has data at 0x${b.addr.toString(16).toUpperCase()}, outside internal flash and QSPI. Is this the right file?`);
+    if (inside(b, FLASH_BASE, fam.maxFlash)) internal.push(b);
+    else if (inside(b, QSPI.base, QSPI.size)) {
+      if (!fam.qspi) throw new Error("This file has screen-graphics (QSPI) data, so it is display board firmware, not for this board.");
+      qspi.push(b);
+    } else throw new Error(`File has data at ${hexAddr(b.addr)}, outside this board's flash. Is this the right file?`);
   }
-  const units = (list, unitsFor) => {
-    const map = new Map();
-    for (const b of list) {
-      for (let a = b.addr; a < b.addr + b.data.length;) {
-        const u = unitsFor(a);
-        let e = map.get(u.base);
-        if (!e) { e = { ...u, data: new Uint8Array(u.size).fill(0xFF), used: 0 }; map.set(u.base, e); }
-        const n = Math.min(b.addr + b.data.length, u.base + u.size) - a;
-        e.data.set(b.data.subarray(a - b.addr, a - b.addr + n), a - u.base);
-        e.used += n; a += n;
-      }
+
+  let units;
+  if (family === "F7") {
+    units = fillUnits(internal, a => F7_SECTORS.find(s => a >= s.base && a < s.base + s.size));
+  } else {
+    // Pages the file touches, grouped into consecutive runs that fit the RAM buffer.
+    const ps = fam.pageSize, maxRun = fam.ram.bufSize / ps;
+    const pages = fillUnits(internal, a => {
+      const n = Math.floor((a - FLASH_BASE) / ps);
+      return { n, count: 1, base: FLASH_BASE + n * ps, size: ps };
+    });
+    units = [];
+    for (const p of pages) {
+      const last = units[units.length - 1];
+      if (last && last.n + last.count === p.n && last.count < maxRun) {
+        const data = new Uint8Array(last.size + ps);
+        data.set(last.data); data.set(p.data, last.size);
+        last.count++; last.size += ps; last.data = data;
+      } else units.push({ ...p });
     }
-    return [...map.values()].sort((x, y) => x.base - y.base);
-  };
-  const sectors = units(internal, a => F7_SECTORS.find(s => a >= s.base && a < s.base + s.size));
-  const qsectors = units(qspi, a => {
+  }
+  const qunits = fillUnits(qspi, a => {
     const base = a - ((a - QSPI.base) % QSPI.sector);
     return { base, size: QSPI.sector, offset: base - QSPI.base };
   });
   const sum = l => l.reduce((t, b) => t + b.data.length, 0);
-  return { sectors, qsectors, internalBytes: sum(internal), qspiBytes: sum(qspi) };
+  return { family, units, qunits, internalBytes: sum(internal), qspiBytes: sum(qspi) };
 }
 
 const CRC_TABLE = (() => {

@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Run the flash loader in a Cortex-M emulator against simple models of the
-STM32F7 flash controller, QUADSPI peripheral and N25Q128A chip.
+STM32F7 flash controller + QUADSPI + N25Q128A (display board) and the
+STM32L4 flash controller (power and sensor boards).
 
-Needs `pip install unicorn`. Usage: test_loader_emu.py firmware.hex [qspi_kb]
+Needs `pip install unicorn`.
+Usage: test_loader_emu.py display.hex [qspi_kb]   (F7 path)
+       test_loader_emu.py --l4 power.hex          (L4 path)
 qspi_kb limits how much of the QSPI image is exercised (default 256) to keep
 the run short; internal flash is always programmed in full.
 """
@@ -257,5 +260,115 @@ def run_test(hexpath, qspi_kb):
     print("page-crossing write and bad-command checks OK")
 
 
+class L4Flash:
+    """STM32L43x: 2 KB pages, double-word programming, single bank."""
+    def __init__(s, size=0x40000):
+        s.mem = bytearray(b"\xA5" * size)
+        s.cr, s.sr, s.locked, s.keys, s.busy, s.half = 0, 0x8000, True, [], 0, None  # OPTVERR set after reset
+        s.erased = []
+
+    def read(s, off):
+        if off == 0x10:
+            if s.busy: s.busy -= 1
+            return s.sr | (1 << 16 if s.busy else 0)
+        if off == 0x14:
+            return s.cr | (0x80000000 if s.locked else 0)
+        return 0
+
+    def write(s, off, v):
+        if off == 0x08:
+            s.keys.append(v)
+            if s.keys[-2:] == [0x45670123, 0xCDEF89AB]: s.locked = False
+        elif off == 0x10:
+            s.sr &= ~v
+        elif off == 0x14:
+            if v & 0x80000000: s.locked = True
+            if s.locked: return
+            s.cr = v & 0x7FFFFFFF
+            if v & (1 << 16):
+                assert v & 2 and not v & 1, "STRT without PER"
+                assert not (s.sr & 0xC3FA), "erase started with stale error flags (PGSERR on real chip)"
+                pg = (v >> 3) & 0xFF
+                s.mem[pg * 2048:(pg + 1) * 2048] = b"\xFF" * 2048
+                s.erased.append(pg); s.busy = 3
+
+    def program(s, addr, size, v):
+        assert s.cr & 1 and not s.locked, "flash write without PG/unlock"
+        assert not (s.sr & 0xC3FA), "program with stale error flags"
+        assert size == 4
+        o = addr - 0x08000000
+        if s.half is None:
+            assert o % 8 == 0, "double-word not 8-byte aligned"
+            s.half = (o, v)
+        else:
+            assert o == s.half[0] + 4, "second word not consecutive"
+            for oo, vv in (s.half, (o, v)):
+                assert s.mem[oo:oo + 4] == b"\xFF" * 4, f"programming non-erased word {oo:#x}"
+                s.mem[oo:oo + 4] = vv.to_bytes(4, "little")
+            s.half = None; s.busy = 2
+
+
+def run_l4(hexpath):
+    image, base = {}, 0
+    for line in open(hexpath):
+        b = bytes.fromhex(line.strip()[1:])
+        if b[3] == 4: base = int.from_bytes(b[4:6], "big") << 16
+        elif b[3] == 0:
+            for i, x in enumerate(b[4:4 + b[0]]): image[base + (b[1] << 8 | b[2]) + i] = x
+    CODE, TABLE, STACK, BUF = 0x20000000, 0x20001000, 0x20002000, 0x20002000  # js/devices.js L4 layout
+    fl = L4Flash()
+    uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
+    uc.mem_map(0x20000000, 0xC000)  # 48 KB SRAM1
+    uc.mem_map(0x08000000, len(fl.mem))
+    uc.mmio_map(0x40022000, 0x400, lambda u, o, sz, d: fl.read(o), None, lambda u, o, sz, v, d: fl.write(o, v), None)
+    from unicorn import UC_HOOK_MEM_WRITE
+    uc.hook_add(UC_HOOK_MEM_WRITE, lambda u, acc, addr, sz, v, d: fl.program(addr, sz, v), begin=0x08000000, end=0x08000000 + len(fl.mem) - 1)
+    uc.mem_write(CODE, CODE_BYTES)
+
+    def call(cmd, a=0, b=0, c=0):
+        for r, v in zip((UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3), (cmd, a, b, c)): uc.reg_write(r, v)
+        uc.reg_write(UC_ARM_REG_SP, STACK); uc.reg_write(UC_ARM_REG_LR, (CODE + DONE) | 1)
+        uc.emu_start((CODE + ENTRY) | 1, CODE + DONE, count=100_000_000)
+        assert uc.reg_read(UC_ARM_REG_PC) == CODE + DONE
+        return uc.reg_read(UC_ARM_REG_R0)
+
+    pages = sorted({(a - 0x08000000) // 2048 for a in image})
+    runs = []
+    for pg in pages:
+        if runs and runs[-1][0] + runs[-1][1] == pg and runs[-1][1] < 8: runs[-1][1] += 1
+        else: runs.append([pg, 1])
+    want = bytearray(fl.mem)
+    for pg in pages: want[pg * 2048:(pg + 1) * 2048] = b"\xFF" * 2048
+    for a, v in image.items(): want[a - 0x08000000] = v
+    for first, n in runs:
+        assert call(9, first, n, 0) == 0
+        lo, hi = first * 2048, (first + n) * 2048
+        uc.mem_write(BUF, bytes(want[lo:hi]))
+        assert call(10, 0x08000000 + lo, BUF, hi - lo) == 0
+    assert fl.erased == pages
+    assert call(11) == 0 and fl.locked
+    assert fl.mem == want, "L4 flash mismatch"
+    uc.mem_write(0x08000000, bytes(fl.mem))
+    for first, n in runs:
+        lo, hi = first * 2048, (first + n) * 2048
+        assert call(8, 0x08000000 + lo, hi - lo, TABLE) == zlib.crc32(want[lo:hi])
+    untouched = [p for p in range(max(pages)) if p not in pages]
+    assert all(fl.mem[p * 2048:(p + 1) * 2048] == b"\xA5" * 2048 for p in untouched)
+    print(f"L4 OK: {len(pages)} pages in {len(runs)} runs, {len(image)} bytes, CRC matches, "
+          f"pages {untouched[0]}-{untouched[-1]} untouched")
+    # bank-2 page number maths: global page 300 with 256 pages/bank -> BKER, PNB 44
+    seen = []
+    orig = fl.write
+    fl.write = lambda off, v: (seen.append(v) if off == 0x14 and v & (1 << 16) else None, orig(off, v))
+    call(9, 300, 1, 256)
+    assert seen and seen[0] & (1 << 11) and (seen[0] >> 3) & 0xFF == 44, hex(seen[0] if seen else 0)
+    print("L4 dual-bank page addressing OK")
+
+
+CODE_BYTES = CODE
+
 if __name__ == "__main__":
-    run_test(sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 256)
+    if sys.argv[1] == "--l4":
+        for f in sys.argv[2:]: run_l4(f)
+    else:
+        run_test(sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 256)

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DOM Display Flasher</title>
+<title>DOM Board Flasher</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect x=%276%27 y=%276%27 width=%2720%27 height=%2720%27 rx=%273%27 fill=%27%230b6bcb%27/%3E%3Cpath d=%27M10 2v4M16 2v4M22 2v4M10 26v4M16 26v4M22 26v4M2 10h4M2 16h4M2 22h4M26 10h4M26 16h4M26 22h4%27 stroke=%27%230b6bcb%27 stroke-width=%272%27/%3E%3C/svg%3E">
 <style>
   :root {
@@ -60,14 +60,18 @@
   .note { color: var(--muted); font-size: 13px; margin: 10px 0 0; }
   .warnline { color: var(--warn); font-weight: 600; margin: 10px 0 0; }
   a { color: var(--accent); }
+  .seg { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .seg button { background: transparent; color: var(--accent); font-weight: 600; }
+  .seg button.on { background: var(--accent); color: var(--accent-text); }
+  .boardname { font-weight: 700; }
   [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <main>
-  <h1>DOM Display Flasher</h1>
-  <p class="sub">Updates the firmware on the STM32F746G display board from Microsoft Edge or Google Chrome. Nothing to install.
-    <span class="th">อัปเดตเฟิร์มแวร์บอร์ดจอผ่าน Microsoft Edge หรือ Google Chrome โดยไม่ต้องติดตั้งโปรแกรม</span></p>
+  <h1>DOM Board Flasher</h1>
+  <p class="sub">Updates the firmware on the DOM display, power and sensor boards from Microsoft Edge or Google Chrome. Nothing to install.
+    <span class="th">อัปเดตเฟิร์มแวร์บอร์ดจอ บอร์ดพาวเวอร์ และบอร์ดเซนเซอร์ ผ่าน Microsoft Edge หรือ Google Chrome โดยไม่ต้องติดตั้งโปรแกรม</span></p>
 
   <div class="result bad" id="unsupported" hidden>
     <b class="title">This browser can't access USB devices.</b>
@@ -84,18 +88,36 @@
         <span class="th" style="display:inline">or drop it here · เลือกไฟล์ .hex หรือลากไฟล์มาวางที่นี่</span>
       </div>
       <div id="fileInfo" hidden><table><tbody id="fileFacts"></tbody></table></div>
+      <div id="boardPick" hidden style="margin-top:10px">
+        <b>Which board is this file for?</b><span class="th">ไฟล์นี้สำหรับบอร์ดไหน</span>
+        <div class="seg">
+          <button data-board="display">Display board</button>
+          <button data-board="power">Power board</button>
+          <button data-board="sensor">Sensor board</button>
+        </div>
+      </div>
     </div>
   </div>
 
   <div class="card">
-    <h2><span class="n">2</span>Connect the board and flash</h2>
-    <ol style="margin:0 0 12px;padding-left:20px">
-      <li>Plug the USB cable into the board's <b>USB ST-LINK</b> port (CN14) and into this laptop.
-        <span class="th">เสียบสาย USB เข้าช่อง USB ST-LINK (CN14) ของบอร์ด และเข้ากับคอมพิวเตอร์</span></li>
+    <h2><span class="n">2</span><span>Connect the <span id="boardTitle">board</span> and flash</span></h2>
+    <ol id="stepsBuiltin" style="margin:0 0 12px;padding-left:20px">
+      <li>Plug the USB cable into the display board's <b>USB ST-LINK</b> port (CN14) and into this laptop.
+        <span class="th">เสียบสาย USB เข้าช่อง USB ST-LINK (CN14) ของบอร์ดจอ และเข้ากับคอมพิวเตอร์</span></li>
       <li>Click <b>Flash board</b>, choose <b>STM32 STLink</b> in the list, then click <b>Connect</b>.
         <span class="th">กด Flash board เลือก STM32 STLink จากรายการ แล้วกด Connect (เชื่อมต่อ)</span></li>
       <li>Wait until it says <b>Done</b>. Do not unplug the board while it is flashing (about 2 minutes).
         <span class="th">รอจนขึ้นว่าเสร็จ ห้ามถอดสายระหว่างแฟลช (ประมาณ 2 นาที)</span></li>
+    </ol>
+    <ol id="stepsDongle" hidden style="margin:0 0 12px;padding-left:20px">
+      <li>Wire the <b>ST-LINK V2</b> programmer to the board's programming header: <b>SWDIO</b>, <b>SWCLK</b>, <b>GND</b> and <b>3.3V</b>, the same way as for STM32 ST-LINK Utility or STM32CubeProgrammer. Power the board as usual.
+        <span class="th">ต่อสายจาก ST-LINK V2 เข้าขาโปรแกรมของบอร์ด: SWDIO, SWCLK, GND และ 3.3V แบบเดียวกับที่ใช้กับ ST-LINK Utility หรือ STM32CubeProgrammer แล้วจ่ายไฟให้บอร์ดตามปกติ</span></li>
+      <li>Plug the ST-LINK V2 into this laptop's USB port.
+        <span class="th">เสียบ ST-LINK V2 เข้าช่อง USB ของคอมพิวเตอร์</span></li>
+      <li>Click <b>Flash board</b>, choose <b>STM32 STLink</b> in the list, then click <b>Connect</b>.
+        <span class="th">กด Flash board เลือก STM32 STLink จากรายการ แล้วกด Connect (เชื่อมต่อ)</span></li>
+      <li>Wait until it says <b>Done</b> (about 15 seconds). Do not disconnect anything while it is flashing.
+        <span class="th">รอจนขึ้นว่าเสร็จ (ประมาณ 15 วินาที) ห้ามถอดสายระหว่างแฟลช</span></li>
     </ol>
     <div class="row">
       <button id="btnFlash" class="big" disabled>Flash board</button>
@@ -127,8 +149,9 @@
 import { parseHex, makePlan } from "./js/hex.js";
 import { StLink, USB_FILTERS, STLINK_MODELS } from "./js/stlink.js";
 import { Flasher, FlashError } from "./js/flasher.js";
+import { BOARDS, boardFromFileName } from "./js/devices.js";
 
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 const $ = (id) => document.getElementById(id);
 const hex = (n, w = 4) => "0x" + (n >>> 0).toString(16).toUpperCase().padStart(w, "0");
 const kb = (n) => n >= 1048576 ? (n / 1048576).toFixed(2) + " MB" : Math.round(n / 1024) + " KB";
@@ -157,39 +180,88 @@ function fact(name, value) {
   const a = document.createElement("td"); a.textContent = name;
   const b = document.createElement("td"); b.textContent = value;
   tr.append(a, b); $("fileFacts").append(tr);
+  return tr;
 }
 
-log(`DOM Display Flasher v${VERSION}`);
+log(`DOM Board Flasher v${VERSION}`);
 log("Browser: " + navigator.userAgent);
 
-// ---------- file ----------
-let plan = null, fileName = "";
+// ---------- file and board ----------
+let blocks = null, plan = null, board = null, fileName = "", fileSize = 0;
 
-async function loadFile(file) {
-  plan = null;
-  $("btnFlash").disabled = true;
+function showSteps() {
+  const b = board && BOARDS[board];
+  $("stepsBuiltin").hidden = !!b && b.probe !== "builtin";
+  $("stepsDongle").hidden = !b || b.probe !== "dongle";
+  $("boardTitle").textContent = b ? b.label.toLowerCase() : "board";
+}
+
+function render(problem) {
   $("fileFacts").replaceChildren();
   $("fileInfo").hidden = false;
-  $("result").hidden = true;
-  fileName = file.name;
-  fact("File", `${file.name} (${kb(file.size)})`);
+  fact("File", `${fileName} (${kb(fileSize)})`);
+  if (board) {
+    const row = fact("Board", `${BOARDS[board].label} · ${BOARDS[board].th}`);
+    row.lastChild.className = "boardname";
+  }
+  if (plan) {
+    const units = plan.family === "F7" ? `sectors ${plan.units.map(u => u.n).join(", ")}` : `${plan.units.reduce((t, u) => t + u.count, 0)} pages`;
+    fact("Internal flash", `${kb(plan.internalBytes)} in ${units}`);
+    if (plan.qspiBytes) fact("QSPI flash (screen graphics)", `${kb(plan.qspiBytes)} in ${plan.qunits.length} blocks`);
+  }
+  if (problem) fact("Problem", problem);
+  const ready = !!plan && "usb" in navigator;
+  $("btnFlash").disabled = !ready;
+  $("btnFlash").textContent = board ? `Flash ${BOARDS[board].label.toLowerCase()}` : "Flash board";
+  $("flashHint").textContent = ready ? "Ready · พร้อมแฟลช"
+    : !blocks ? "Choose a valid .hex file · เลือกไฟล์ .hex ที่ถูกต้อง"
+    : !board ? "Choose the board above · เลือกบอร์ดด้านบน" : "Can't flash this file · ใช้ไฟล์นี้ไม่ได้";
+  for (const btn of document.querySelectorAll("#boardPick button")) btn.classList.toggle("on", btn.dataset.board === board);
+  showSteps();
+}
+
+function setBoard(k) {
+  board = k;
+  plan = null;
   try {
-    if (!/\.(hex|ihex)$/i.test(file.name)) throw new Error("This is not a .hex file.");
-    const blocks = parseHex(await file.text());
-    plan = makePlan(blocks);
-    fact("Internal flash", `${kb(plan.internalBytes)} in sectors ${plan.sectors.map(s => s.n).join(", ") || "none"}`);
-    fact("QSPI flash (screen graphics)", plan.qspiBytes ? `${kb(plan.qspiBytes)} in ${plan.qsectors.length} blocks` : "none");
-    if (!plan.internalBytes) throw new Error("The file has no program for the STM32's internal flash. Is this the right file?");
-    log(`File ${file.name}: internal ${plan.internalBytes} B (sectors ${plan.sectors.map(s => s.n)}), QSPI ${plan.qspiBytes} B (${plan.qsectors.length} x 64 KB)`);
-    $("btnFlash").disabled = !("usb" in navigator);
-    $("flashHint").textContent = "Ready · พร้อมแฟลช";
+    plan = makePlan(blocks, BOARDS[k].family);
+    log(`Board: ${BOARDS[k].label}. Internal ${plan.internalBytes} B in ${plan.units.length} erase units, QSPI ${plan.qspiBytes} B`);
+    if (!plan.internalBytes) throw new Error("The file has no program for the chip's internal flash. Is this the right file?");
+    if (BOARDS[k].needsQspi && !plan.qspiBytes) {
+      throw new Error("This file has no screen graphics (QSPI data), so it is not display board firmware.");
+    }
+    render();
   } catch (e) {
     plan = null;
-    fact("Problem", e.message);
-    log("File error: " + e.message);
-    $("flashHint").textContent = "Choose a valid .hex file · เลือกไฟล์ .hex ที่ถูกต้อง";
+    log("Plan error: " + e.message);
+    render(e.message);
   }
 }
+
+async function loadFile(file) {
+  blocks = plan = board = null;
+  $("result").hidden = true;
+  $("boardPick").hidden = true;
+  fileName = file.name; fileSize = file.size;
+  try {
+    if (!/\.(hex|ihex)$/i.test(file.name)) throw new Error("This is not a .hex file.");
+    blocks = parseHex(await file.text());
+    log(`File ${file.name}: ${blocks.length} blocks`);
+  } catch (e) {
+    blocks = null;
+    log("File error: " + e.message);
+    render(e.message);
+    return;
+  }
+  const k = boardFromFileName(file.name);
+  if (k) setBoard(k);
+  else {
+    // File name doesn't say which board: the technician must choose.
+    $("boardPick").hidden = false;
+    render();
+  }
+}
+for (const btn of document.querySelectorAll("#boardPick button")) btn.onclick = () => blocks && setBoard(btn.dataset.board);
 $("file").onchange = (e) => e.target.files[0] && loadFile(e.target.files[0]);
 const drop = $("drop");
 drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
@@ -210,7 +282,7 @@ function driverAdvice(e) {
   const m = String(e && e.message || e);
   if (/access denied|security|unable to claim|claimInterface/i.test(m) || e?.name === "SecurityError" || e?.name === "NetworkError") {
     return ["bad", "The board was found, but Windows won't let the browser use it.",
-      ["This laptop is missing ST's ST-LINK USB driver, which the board's built-in ST-LINK needs on Windows. Ask IT to install \"STSW-LINK009\" (ST-LINK USB driver) once, or use a laptop that already has STM32CubeProgrammer or STM32CubeIDE installed.",
+      ["This laptop is missing ST's ST-LINK USB driver, which ST-LINK/V2 and V2-1 programmers need on Windows. Ask IT to install \"STSW-LINK009\" (ST-LINK USB driver) once, or use a laptop that already has STM32CubeProgrammer or STM32CubeIDE installed.",
        "คอมพิวเตอร์เครื่องนี้ยังไม่มีไดรเวอร์ ST-LINK ให้ IT ติดตั้ง STSW-LINK009 หนึ่งครั้ง หรือใช้เครื่องที่ติดตั้ง STM32CubeProgrammer แล้ว"],
       "Also close STM32CubeProgrammer, STM32CubeIDE or other tabs of this page if they are open."];
   }
@@ -222,17 +294,26 @@ function driverAdvice(e) {
   return null;
 }
 
-async function connectTarget(st, flasher) {
+async function connectTarget(st, flasher, family) {
   await st.leaveCurrentMode();
   const v = await st.voltage();
   log(`Board voltage: ${v ? v.toFixed(2) + " V" : "not measured"}`);
-  if (v && v < 2.7) throw new FlashError(`Board voltage is ${v.toFixed(2)} V. It must be at least 2.7 V to program safely. Check the power supply.`);
   if (await st.setFastSwd()) log("SWD clock 4 MHz");
+  const inspect = async () => {
+    const info = await flasher.inspect(family);
+    // F7 programs 32 bits at a time, which needs >= 2.7 V. (Dongles that
+    // don't sense the target report ~0 V; ignore those readings.)
+    if (family === "F7" && v > 0.5 && v < 2.7) {
+      throw new FlashError(`Board voltage is ${v.toFixed(2)} V. It must be at least 2.7 V to program safely. Check the power supply.`);
+    }
+    return info;
+  };
   try {
     await st.enterSwd();
     log(`Debug port ID ${hex(await st.idcode(), 8)}`);
-    return await flasher.inspect();
+    return await inspect();
   } catch (e) {
+    if (e instanceof FlashError) throw e; // connected fine, but the chip is wrong or locked
     log(`Normal connect failed (${e.message}); trying connect-under-reset`);
     await st.driveNrst(0);
     await new Promise(r => setTimeout(r, 50));
@@ -242,7 +323,7 @@ async function connectTarget(st, flasher) {
     await st.writeDebug32(0xE000EDF0, 0xA05F0003);
     await st.driveNrst(1);
     await new Promise(r => setTimeout(r, 100));
-    return await flasher.inspect();
+    return await inspect();
   }
 }
 
@@ -256,8 +337,8 @@ async function flash() {
     if (e?.name === "NotFoundError") {
       log("No device selected.");
       result("warn", "No board was selected.",
-        ["If the list was empty, check the cable is in the USB ST-LINK port (CN14) and the board's power LED is on. If it is still empty, run the Board check page and send the report.",
-         "ถ้ารายการว่าง ตรวจสอบว่าเสียบสายที่ช่อง USB ST-LINK (CN14) และไฟเลี้ยงบอร์ดติด ถ้ายังไม่เจอ ให้เปิดหน้า Board check แล้วส่งรายงาน"]);
+        ["If the list was empty, check the ST-LINK is plugged into this laptop (for the display board: the USB ST-LINK port, CN14). If it is still empty, run the Board check page and send the report.",
+         "ถ้ารายการว่าง ตรวจสอบว่าเสียบ ST-LINK เข้าคอมพิวเตอร์แล้ว (บอร์ดจอ: ช่อง USB ST-LINK, CN14) ถ้ายังไม่เจอ ให้เปิดหน้า Board check แล้วส่งรายงาน"]);
     } else {
       log("requestDevice: " + e);
       result("bad", "Couldn't open the device list.", String(e.message || e));
@@ -268,6 +349,7 @@ async function flash() {
   busy = true;
   $("btnFlash").disabled = true;
   $("file").disabled = true;
+  for (const btn of document.querySelectorAll("#boardPick button")) btn.disabled = true;
   $("progress").hidden = false;
   progress(0, "Connecting…");
   let wake = null;
@@ -281,17 +363,18 @@ async function flash() {
   try {
     const v = await st.open();
     log(`ST-LINK firmware V${v.stlink}J${v.jtag}${v.msd !== undefined ? "M" + v.msd : "S" + v.swim}`);
-    const info = await connectTarget(st, flasher);
-    log(`MCU: STM32F74x/F75x dev ${hex(info.devId, 3)} rev ${hex(info.rev)}, flash ${info.flashKB} KB, RDP ${hex(info.rdp, 2)}, nWRP ${hex(info.nwrp, 2)}`);
+    const info = await connectTarget(st, flasher, plan.family);
+    log(`MCU: ${info.chip.name} dev ${hex(info.devId, 3)} rev ${hex(info.rev)}, flash ${info.flashKB} KB, RDP ${hex(info.rdp, 2)}` +
+      (info.family === "F7" ? `, nWRP ${hex(info.nwrp, 2)}` : `, WRP ${JSON.stringify(info.wrp)}`));
     stage = "flash";
     progress(0, "Loading flashing helper…");
     await flasher.loadLoader();
-    await flasher.program(plan, info, progress);
+    await flasher.program(plan, progress);
     await flasher.resetRun();
     const secs = Math.round((Date.now() - t0) / 1000);
     log(`Done in ${secs} s. Board restarted.`);
     progress(1, `Done in ${secs} s`);
-    result("ok", "Done. The board has been updated and restarted.",
+    result("ok", `Done. The ${BOARDS[board].label.toLowerCase()} has been updated and restarted.`,
       [`${fileName} was written and verified in ${secs} seconds. You can unplug the board.`,
        "แฟลชและตรวจสอบเรียบร้อย บอร์ดรีสตาร์ทแล้ว ถอดสายได้"]);
   } catch (e) {
@@ -299,9 +382,13 @@ async function flash() {
     const adv = stage === "connect" ? driverAdvice(e) : null;
     if (adv) result(...adv);
     else if (stage === "connect") {
-      result("bad", "Couldn't connect to the display board.", e.message,
-        ["Check the board is powered and the cable is in the USB ST-LINK port, unplug and replug it, then try again.",
-         "ตรวจสอบไฟเลี้ยงบอร์ดและสาย USB ถอดแล้วเสียบใหม่ แล้วลองอีกครั้ง"]);
+      const dongle = BOARDS[board].probe === "dongle";
+      result("bad", `Couldn't connect to the ${BOARDS[board].label.toLowerCase()}.`, e.message,
+        dongle
+          ? ["Check the board is powered and the SWDIO, SWCLK and GND wires are connected firmly, then try again.",
+             "ตรวจสอบไฟเลี้ยงบอร์ด และสาย SWDIO, SWCLK, GND ให้แน่น แล้วลองอีกครั้ง"]
+          : ["Check the board is powered and the cable is in the USB ST-LINK port, unplug and replug it, then try again.",
+             "ตรวจสอบไฟเลี้ยงบอร์ดและสาย USB ถอดแล้วเสียบใหม่ แล้วลองอีกครั้ง"]);
     } else {
       result("bad", "Flashing failed. The board may not start until it is flashed successfully.", e.message,
         ["Keep the board plugged in and click Flash board again. If it fails twice, copy the report and send it to the DOM team.",
@@ -315,6 +402,7 @@ async function flash() {
     busy = false;
     $("btnFlash").disabled = !plan;
     $("file").disabled = false;
+    for (const btn of document.querySelectorAll("#boardPick button")) btn.disabled = false;
   }
 }
 

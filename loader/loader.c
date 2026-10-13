@@ -1,12 +1,15 @@
 /*
- * RAM-resident flash loader for the STM32F746G-DISCO display board.
+ * RAM-resident flash loader for the DOM boards:
+ *   display board  STM32F746 (internal flash + QSPI N25Q128A/MT25QL128)
+ *   power/sensor   STM32L4 (internal flash)
  *
  * The web page copies this code into SRAM over SWD, then calls
  * loader(cmd, a, b, c) with LR pointing at a BKPT, so every call ends
  * with the core halted and the result in R0. Data to program is copied
  * by the page into a RAM buffer before each call.
  *
- * Runs on the reset clock (HSI 16 MHz), no interrupts, no FPU.
+ * Position independent: the page loads it wherever the chip has RAM.
+ * Runs on the reset clock (F7: HSI 16 MHz, L4: MSI 4 MHz), no interrupts, no FPU.
  * Build: tools/build_loader.py (clang, no libc, no relocations).
  */
 #include <stdint.h>
@@ -25,6 +28,15 @@
 #define CR_PSIZE_X32 (2u << 8)
 #define CR_STRT (1u << 16)
 #define CR_LOCK (1u << 31)
+
+/* ---- STM32L4 internal flash (RM0394 ch.3) ---- */
+#define L4_FLASH_KEYR REG(0x40022008)
+#define L4_FLASH_SR REG(0x40022010)
+#define L4_FLASH_CR REG(0x40022014)
+#define L4_SR_ERRS 0xC3FAu /* OPERR PROGERR WRPERR PGAERR SIZERR PGSERR MISSERR FASTERR RDERR OPTVERR */
+#define L4_CR_PG (1u << 0)
+#define L4_CR_PER (1u << 1)
+#define L4_CR_BKER (1u << 11)
 
 /* ---- RCC / GPIO ---- */
 #define RCC_AHB1ENR REG(0x40023830)
@@ -78,11 +90,15 @@
 #define LDR_QSPI_WRITE 6   /* a = flash offset, b = src, c = bytes */
 #define LDR_QSPI_MMAP 7    /* memory-map QSPI at 0x90000000 for reads */
 #define LDR_CRC32 8        /* a = addr, b = bytes, c = 1 KB scratch for table */
+#define LDR_L4_ERASE 9     /* a = first page, b = page count, c = pages per bank (0 = single bank) */
+#define LDR_L4_WRITE 10    /* a = dest, b = src, c = bytes (multiple of 8) */
+#define LDR_L4_LOCK 11
 
 /* Errors: 0x8xxxxxxx so they can't be confused with a JEDEC ID or CRC
  * that a caller checks separately. Low bits carry detail. */
 #define ERR_TIMEOUT 0x80000001u
-#define ERR_FLASH 0x81000000u   /* | FLASH_SR error bits */
+#define ERR_FLASH 0x81000000u   /* | F7 FLASH_SR error bits */
+#define ERR_L4FLASH 0x84000000u /* | L4 FLASH_SR error bits */
 #define ERR_BADCMD 0x82000000u
 #define ERR_QSPI_WP 0x83000000u /* | status register */
 
@@ -147,6 +163,81 @@ static uint32_t flash_write(uint32_t dst, const uint32_t *src, uint32_t len)
         }
     }
     FLASH_CR = 0;
+    return 0;
+}
+
+/* ---- STM32L4 internal flash ---- */
+
+static int l4_wait(void)
+{
+    uint32_t n = T_LONG;
+    while (L4_FLASH_SR & SR_BSY)
+        if (--n == 0)
+            return -1;
+    return 0;
+}
+
+static uint32_t l4_unlock(void)
+{
+    if (L4_FLASH_CR & CR_LOCK) {
+        L4_FLASH_KEYR = 0x45670123u;
+        L4_FLASH_KEYR = 0xCDEF89ABu;
+    }
+    if (l4_wait())
+        return ERR_TIMEOUT;
+    /* Stale flags (OPTVERR is often set after reset) block programming. */
+    L4_FLASH_SR = L4_SR_ERRS | 1u;
+    return 0;
+}
+
+static uint32_t l4_erase(uint32_t page, uint32_t count, uint32_t per_bank)
+{
+    uint32_t r = l4_unlock();
+    if (r)
+        return r;
+    for (uint32_t p = page; p < page + count; p++) {
+        uint32_t bker = per_bank && p >= per_bank;
+        uint32_t pnb = bker ? p - per_bank : p;
+        L4_FLASH_CR = L4_CR_PER | ((pnb & 0xFF) << 3) | (bker ? L4_CR_BKER : 0);
+        L4_FLASH_CR |= CR_STRT;
+        __asm__ volatile("dsb" ::: "memory");
+        if (l4_wait()) {
+            L4_FLASH_CR = 0;
+            return ERR_TIMEOUT;
+        }
+        r = L4_FLASH_SR & L4_SR_ERRS;
+        if (r) {
+            L4_FLASH_CR = 0;
+            return ERR_L4FLASH | r;
+        }
+    }
+    L4_FLASH_CR = 0;
+    return 0;
+}
+
+/* Double-word programming: two consecutive 32-bit writes per operation. */
+static uint32_t l4_write(uint32_t dst, const uint32_t *src, uint32_t len)
+{
+    uint32_t r = l4_unlock();
+    if (r)
+        return r;
+    L4_FLASH_CR = L4_CR_PG;
+    volatile uint32_t *d = (volatile uint32_t *)dst;
+    for (uint32_t i = 0; i < len / 4; i += 2) {
+        d[i] = src[i];
+        d[i + 1] = src[i + 1];
+        __asm__ volatile("dsb" ::: "memory");
+        if (l4_wait()) {
+            L4_FLASH_CR = 0;
+            return ERR_TIMEOUT;
+        }
+        r = L4_FLASH_SR & L4_SR_ERRS;
+        if (r) {
+            L4_FLASH_CR = 0;
+            return ERR_L4FLASH | r;
+        }
+    }
+    L4_FLASH_CR = 0;
     return 0;
 }
 
@@ -388,6 +479,13 @@ uint32_t loader(uint32_t cmd, uint32_t a, uint32_t b, uint32_t c)
         return qspi_mmap();
     case LDR_CRC32:
         return crc32((const uint8_t *)a, b, (uint32_t *)c);
+    case LDR_L4_ERASE:
+        return l4_erase(a, b, c);
+    case LDR_L4_WRITE:
+        return l4_write(a, (const uint32_t *)b, c);
+    case LDR_L4_LOCK:
+        L4_FLASH_CR = CR_LOCK;
+        return 0;
     }
     return ERR_BADCMD;
 }
